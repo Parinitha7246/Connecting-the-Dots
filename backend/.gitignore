@@ -1,0 +1,10 @@
+PersonaExtractor_Round3.postman_collection.json
+\app\adobe-468817-8bf3d470273e.json
+# Python venv
+venv/
+
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+*.pyd

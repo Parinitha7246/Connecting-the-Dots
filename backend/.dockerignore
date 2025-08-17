@@ -1,0 +1,10 @@
+venv
+.git
+__pycache__
+*.pyc
+*.pyo
+*.pyd
+*.db
+*.log
+storage
+.DS_Store

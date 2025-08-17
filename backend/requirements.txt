@@ -1,0 +1,33 @@
+# --- Azure TTS ---
+azure-cognitiveservices-speech
+
+# --- PDF Processing ---
+PyMuPDF==1.23.19
+pdfminer.six==20221105
+PyPDF2
+
+# --- NLP & ML ---
+sentence-transformers==2.2.2
+scikit-learn==1.4.1.post1
+transformers>=4.39.3,<5.0
+torch>=1.10,<2.3
+huggingface_hub==0.19.4
+nltk==3.8.1
+numpy
+
+# --- API & Utils ---
+fastapi==0.95.2
+uvicorn[standard]==0.22.0
+requests
+openai
+python-dotenv
+python-multipart
+
+google-generativeai
+google-cloud-texttospeech
+
+pyttsx3
+
+
+
+
