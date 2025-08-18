@@ -1,8 +1,0 @@
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
-
-/* light styling for cards/scrollbars to match your mock */
-.card { @apply bg-white rounded-xl shadow p-4; }
-.scrolly { @apply overflow-auto; }
-.badge { @apply inline-block text-xs px-2 py-1 rounded-full bg-gray-100 border; }
