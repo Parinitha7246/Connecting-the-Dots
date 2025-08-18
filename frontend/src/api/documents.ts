@@ -1,50 +1,50 @@
 import { api } from "./client";
-import type { DocMeta, RecommendResponse } from "./types";
+import type { DocMeta } from "./types";
 
-// GET list of uploaded docs (expects your backend route /documents)
+/**
+ * Fetches the list of all available documents from the backend.
+ */
 export async function listDocuments(): Promise<DocMeta[]> {
   const { data } = await api.get("/documents");
   return data?.documents ?? [];
 }
 
-// POST /ingest: upload file
-export async function ingestDocument(file: File, historical = false) {
+/**
+ * Uploads one or more documents to the backend in a single request.
+ * @param files - An array of File objects to upload.
+ * @param historical - A boolean flag indicating if the documents are historical.
+ */
+export async function ingestDocuments(files: File[], historical = false) {
   const form = new FormData();
-  form.append("file", file);
-  form.append("historical", String(historical));
-  return api.post("/ingest", form, {
-    headers: { "Content-Type": "multipart/form-data" },
-  });
-}
 
-// POST recommend by selected text (preferred). If your friend only has /recommend,
-// switch to that in this function.
-export async function recommendBySelection(selectedText: string, top_k = 5, online = true) {
-  // Preferred new route:
+  const kind = historical ? "historical" : "current";
+  form.append("kind", kind);
+
+  for (const file of files) {
+    form.append("files", file);
+  }
+  
+  // The API call is wrapped in a try/catch for robust error handling.
   try {
-    const form = new FormData();
-    form.append("selected_text", selectedText);
-    form.append("top_k", String(top_k));
-    form.append("online", String(online));
-    const { data } = await api.post<RecommendResponse>("/recommend_by_selection", form);
-    return data;
-  } catch {
-    // Fallback to legacy /recommend (Round 1B style) with dummy persona/task
-    const form = new FormData();
-    form.append("persona", "General");
-    form.append("job", selectedText.slice(0, 120));
-    form.append("top_k", String(top_k));
-    const { data } = await api.post<RecommendResponse>("/recommend", form);
-    return data;
+    const response = await api.post("/ingest", form, {
+      headers: {
+        "Content-Type": "multipart/form-data",
+      },
+    });
+    return response;
+  } catch (error) {
+    console.error("CRITICAL ERROR in ingestDocuments API call:", error);
+    throw error;
   }
 }
 
-// GET a file URL by doc id if your backend supports it
-export async function getDocUrl(docId: string): Promise<string | null> {
-  try {
-    const { data } = await api.get(`/documents/${docId}`);
-    return data?.url ?? null;
-  } catch {
-    return null;
-  }
+/**
+ * Sends a request to the backend to delete a specific document.
+ * @param docId - The ID of the document to delete (which is its filename).
+ */
+export async function deleteDocument(docId: string) {
+  // We assume the backend expects the document ID in the URL, e.g., DELETE /documents/MyFile.pdf
+  // The filename might contain spaces or special characters, so we must encode it.
+  const encodedId = encodeURIComponent(docId);
+  return api.delete(`/documents/${encodedId}`);
 }

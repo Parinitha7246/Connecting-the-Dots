@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import Sidebar from "./components/Sidebar";
 import AdobePDFViewer from "./components/AdobePDFViewer";
 import RightPanel from "./components/RightPanel";
@@ -6,8 +6,6 @@ import { listDocuments } from "./api/documents";
 import { useAppStore } from "./store/useAppStore";
 import { BookIcon, BulbIcon } from "./components/Icons";
 
-// --- THIS IS THE CORRECTED WELCOME CARD ---
-// It now has a transparent background and a dotted border, just like the Unlock Insights card.
 const WelcomeCard = () => (
   <div className="h-full flex flex-col items-center justify-center text-center bg-transparent border-2 border-dashed border-gray-300 rounded-xl">
     <BookIcon />
@@ -25,29 +23,45 @@ const UnlockInsightsCard = () => (
 );
 
 export default function App() {
-  const { setDocs, docs, setCurrentDoc, currentDoc } = useAppStore();
+  const { setDocs, docs, setCurrentDoc, latestCurrentDocId } = useAppStore();
+  const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
-    (async () => {
+    const initializeApp = async () => {
       try {
         const items = await listDocuments();
         setDocs(items);
-        if (items.length && !currentDoc) {
-          setCurrentDoc(items[0]);
+
+        if (items.length > 0) {
+          const latestDoc = items.find(d => d.id === latestCurrentDocId);
+          setCurrentDoc(latestDoc || items[0]);
         }
       } catch (e) { 
-        console.warn("Backend not connected: Failed to list documents.", e); 
+        console.warn("Backend not connected or failed to list documents.", e); 
+      } finally {
+        setIsLoading(false);
       }
-    })();
-  }, [setDocs, setCurrentDoc, currentDoc]);
+    };
+    
+    initializeApp();
+  }, [setDocs, setCurrentDoc, latestCurrentDocId]);
 
+  if (isLoading) {
+    return (
+      <div className="h-screen w-screen flex items-center justify-center bg-surface-ground text-content-subtle">
+        Loading Application...
+      </div>
+    );
+  }
+  
   return (
-    <div className="h-screen grid grid-cols-[280px_1fr_380px] gap-4 p-4 bg-surface-ground">
-      <Sidebar />
+    <div className="h-screen grid grid-cols-[280px_1fr_380px] gap-4 p-4 bg-surface-ground overflow-hidden">
       
-      {/* This structure is now correct. It will render the WelcomeCard with its dotted border. */}
-      {/* When documents are loaded, it will render the PDF viewer inside a solid card. */}
-      <div className="relative overflow-hidden">
+      <div className="h-full overflow-hidden">
+        <Sidebar />
+      </div>
+      
+      <div className="h-full overflow-hidden">
         {docs.length > 0 ? (
           <div className="card h-full p-0">
             <AdobePDFViewer />
@@ -57,11 +71,13 @@ export default function App() {
         )}
       </div>
 
-      {docs.length > 0 ? (
-        <RightPanel />
-      ) : (
-        <UnlockInsightsCard />
-      )}
+      <div className="h-full overflow-hidden">
+        {docs.length > 0 ? (
+          <RightPanel />
+        ) : (
+          <UnlockInsightsCard />
+        )}
+      </div>
     </div>
   );
 }

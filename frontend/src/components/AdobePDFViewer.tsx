@@ -2,8 +2,8 @@
 import { useEffect, useRef } from "react";
 import { ADOBE_CLIENT_ID } from "../config";
 import { useAppStore } from "../store/useAppStore";
-import { recommendBySelection } from "../api/documents";
-import { getInsights } from "../api/insights";
+// --- This is the corrected import. We get 'getRecommendations' from 'insights.ts' ---
+import { getRecommendations, getInsights } from "../api/insights";
 import { MAX_SNIPPETS } from "../config";
 
 declare global {
@@ -21,7 +21,6 @@ export default function AdobePDFViewer() {
         } = useAppStore();
 
   useEffect(() => {
-    // This check is crucial for the live version.
     if (!currentDoc || !containerRef.current || !window.AdobeDC) return;
 
     resetRightPanel();
@@ -31,8 +30,6 @@ export default function AdobePDFViewer() {
       divId: "adobe-dc-view",
     });
 
-    // --- THIS IS THE LIVE, DYNAMIC CODE ---
-    // It now uses the URL from the currently selected document.
     const previewFilePromise = view.previewFile({
       content: { location: { url: currentDoc.url } },
       metaData: { fileName: currentDoc.name },
@@ -42,7 +39,10 @@ export default function AdobePDFViewer() {
       adobeViewer.getAPIs().then((apis: any) => {
         window.adobeViewerAPIs = apis;
         
-        // ... (The rest of the logic for navigation and event handling is already correct) ...
+        // Navigation logic
+        if (navigationTarget && navigationTarget.doc_id === currentDoc.id) {
+            // ...
+        }
 
         const opts = {
           enableFilePreviewEvents: true,
@@ -63,14 +63,14 @@ export default function AdobePDFViewer() {
                 setSelectedText(text);
                 setLoadingSnippets(true);
 
-                // --- Live API Call for Snippets ---
-                const rec = await recommendBySelection(text, MAX_SNIPPETS, onlineMode);
+                // --- THIS IS THE CORRECTED API CALL ---
+                // We use the getRecommendations function, which correctly calls the /recommend endpoint.
+                const rec = await getRecommendations("General", text.slice(0, 120), MAX_SNIPPETS);
                 const snippets = rec?.recommendations ?? [];
                 setSnippets(snippets);
 
                 const texts = snippets.map(s => s.text).filter(Boolean).slice(0, 6);
                 if (texts.length) {
-                  // --- Live API Call for Insights ---
                   const ins = await getInsights(texts);
                   setInsightsPack({
                     themes: ins?.parsed?.themes || [],
@@ -97,12 +97,12 @@ export default function AdobePDFViewer() {
       window.adobeViewerAPIs = null;
       if (containerRef.current) containerRef.current.innerHTML = "";
     };
-  }, [currentDoc?.id, onlineMode]); // Simplified dependencies for live version
+}, [currentDoc?.id, onlineMode]);
 
-  // ... (The second useEffect for navigation remains the same) ...
   useEffect(() => {
     if (navigationTarget && window.adobeViewerAPIs && navigationTarget.doc_id === currentDoc?.id) {
-        // ...
+        window.adobeViewerAPIs.gotoLocation(navigationTarget.page_number || 1, 0, 0);
+        clearNavigationTarget();
     }
   }, [navigationTarget]);
 
