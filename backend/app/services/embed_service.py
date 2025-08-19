@@ -59,12 +59,15 @@ def _load_dir_embeddings(dir_path: str) -> List[Dict[str, Any]]:
                     vec = np.array(section.get("vector", []))
                     if vec.size == 0:
                         continue
+                    filename = file.replace("_embeddings.json", "")
                     all_sections.append({
                         "text": section.get("text", ""),
-                        "document": section.get("document", file.replace("_embeddings.json", "")),
+                        "document": filename,                        # ✅ use filename
+                        "doc_id": filename,                          # ✅ always filename ID
+                        "doc_name": section.get("document", filename),# pretty title if stored
                         "page_number": section.get("page_number"),
                         "excerpt": section.get("excerpt", ""),
-                        "source_file": file.replace("_embeddings.json", ""),
+                        "source_file": filename,
                         "file_mtime": os.path.getmtime(filepath),
                         "vector": vec
                     })
@@ -73,6 +76,7 @@ def _load_dir_embeddings(dir_path: str) -> List[Dict[str, Any]]:
 
     _embeddings_cache[cache_key] = (all_sections, latest_mtime)
     return all_sections
+
 
 def embed_search_in_dir(query_vec: np.ndarray, dir_path: str, top_k: int = 5) -> List[Dict[str, Any]]:
     """

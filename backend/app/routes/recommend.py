@@ -1,3 +1,4 @@
+# backend/app/routes/recommend.py
 from fastapi import APIRouter
 from pydantic import BaseModel
 from app import config
@@ -13,6 +14,7 @@ class RecommendRequest(BaseModel):
     top_k: int = config.TOP_SECTIONS_COUNT
     online: bool = False
 
+
 @router.post("/recommend")
 async def recommend(payload: RecommendRequest):
     # --- Step 1: Offline embedding search ---
@@ -21,17 +23,25 @@ async def recommend(payload: RecommendRequest):
 
     merged = merge_and_rank(same_doc_res, other_doc_res, payload.top_k)
     recommendations = merged.get("recommendations", [])
-    
+
+    # Ensure snippet + doc_id
     for rec in recommendations:
         if not rec.get("snippet"):
             rec["snippet"] = excerpt(rec.get("text", ""), max_sentences=3)
 
-    # --- Step 2 (NEW): Use LLM for Relation Classification ---
+        # ✅ CRITICAL: Set doc_id that the frontend uses to switch PDFs.
+        # Prefer source_file (the filename we saved during ingest).
+        source_file = rec.get("source_file")
+        if source_file:
+            rec["doc_id"] = source_file
+        else:
+            # Fallbacks (should be rare if ingest is correct)
+            rec["doc_id"] = rec.get("document")  # pretty title as last resort
+
+    # --- Step 2: Optional Online LLM Classification ---
     if payload.online and config.MODE in ("online", "auto") and internet_available():
         try:
-            print("[INFO] Performing LLM classification for snippet relations...")
             llm = LLMService()
-            # This call adds the 'relation_type' key to each snippet in the list
             recommendations = llm.classify_snippet_relations(payload.selected_text, recommendations)
             source = "hybrid"
         except Exception as e:
@@ -43,9 +53,8 @@ async def recommend(payload: RecommendRequest):
     # --- Step 3: Ensure every snippet has a relation_type for the frontend ---
     for rec in recommendations:
         if 'relation_type' not in rec:
-            rec['relation_type'] = 'related' # Default if offline or if LLM failed
+            rec['relation_type'] = 'related'
 
-    # The 'online' part for general insights is removed, as that is now in /insights
     return {
         "source": source,
         "recommendations": recommendations,

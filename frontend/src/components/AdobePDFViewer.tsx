@@ -1,13 +1,12 @@
 /* global AdobeDC */
 import { useEffect, useRef } from "react";
-import { ADOBE_CLIENT_ID } from "../config";
+import { ADOBE_CLIENT_ID, MAX_SNIPPETS } from "../config";
 import { useAppStore } from "../store/useAppStore";
-import { getRecommendations, getInsights } from "../api/insights"; // <-- We need both functions
-import { MAX_SNIPPETS } from "../config";
+import { getRecommendations, getInsights } from "../api/insights";
 import type { Snippet } from "../api/types";
 
 declare global {
-  interface Window { 
+  interface Window {
     AdobeDC: any;
     adobeViewerAPIs?: any;
   }
@@ -15,106 +14,169 @@ declare global {
 
 export default function AdobePDFViewer() {
   const containerRef = useRef<HTMLDivElement>(null);
-  const { 
-    currentDoc, setSelectedText, setSnippets, setLoadingSnippets,
-    onlineMode, setInsightsPack, resetRightPanel,
-    navigationTarget, clearNavigationTarget
+
+  const {
+    currentDoc,
+    onlineMode,
+    resetRightPanel,
+    navigationTarget,
+    clearNavigationTarget,
+    setSnippets,
+    setSelectedText,
+    setLoadingSnippets,
+    setInsightsPack,
   } = useAppStore();
 
+  // Keep latest onlineMode in ref (avoids stale closure in asyncs)
   const onlineModeRef = useRef(onlineMode);
   useEffect(() => {
     onlineModeRef.current = onlineMode;
   }, [onlineMode]);
 
+  // --- Initialize / reinitialize viewer on doc change ---
   useEffect(() => {
-    if (!currentDoc || !currentDoc.url || !containerRef.current || !window.AdobeDC) {
-      return;
-    }
+    if (!currentDoc || !currentDoc.url || !containerRef.current || !window.AdobeDC) return;
 
+    console.log("--- VIEWER INIT ---");
     resetRightPanel();
-    const adobeDCView = new window.AdobeDC.View({ clientId: ADOBE_CLIENT_ID, divId: "adobe-dc-view" });
 
-    adobeDCView.previewFile({
-      content: { location: { url: currentDoc.url } },
-      metaData: { fileName: currentDoc.name },
-    }, { 
-      embedMode: "SIZED_CONTAINER", 
+    const adobeDCView = new window.AdobeDC.View({
+      clientId: ADOBE_CLIENT_ID,
+      divId: "adobe-dc-view",
+    });
+
+    const viewerConfig = {
+      embedMode: "SIZED_CONTAINER",
+      enableAnnotationAPIs: true,
       showDownloadPDF: true,
-      showPrintPDF: true
-    })
-    .then((adobeViewer: any) => adobeViewer.getAPIs())
-    .then((apis: any) => {
-      window.adobeViewerAPIs = apis;
-      
-      adobeDCView.registerCallback(
-        window.AdobeDC.View.Enum.CallbackType.EVENT_LISTENER,
-        async (selectionEvent: any) => {
-          if (selectionEvent.type === window.AdobeDC.View.Enum.FilePreviewEvents.PREVIEW_SELECTION_END) {
-            try {
-              const result = await apis.getSelectedContent();
-              const text = (result?.data || "").trim();
-              if (!text) return;
+      showPrintPDF: true,
+      showAnnotationTools: false,
+      includePDFAnnotations: false,
+    };
 
-              setSelectedText(text);
-              setLoadingSnippets(true);
-              
-              // --- STEP 1: Get Snippets ---
-              const rec = await getRecommendations(text, MAX_SNIPPETS, onlineModeRef.current);
-              
-              let snippets = rec?.recommendations ?? [];
-              snippets = snippets.map((s: Snippet) => ({ ...s, doc_name: s.document, doc_id: s.document }));
-              setSnippets(snippets);
+    adobeDCView
+      .previewFile(
+        {
+          content: { location: { url: currentDoc.url } },
+          metaData: {
+            fileName: currentDoc.name,
+            id: currentDoc.id,
+          },
+        },
+        viewerConfig
+      )
+      .then((adobeViewer: any) => adobeViewer.getAPIs())
+      .then((apis: any) => {
+        window.adobeViewerAPIs = apis;
 
-              // --- THIS IS THE FIX ---
-              // STEP 2: If in online mode, use those snippets to get insights.
-              // This block of code was missing and has now been restored.
-              if (onlineModeRef.current && snippets.length > 0) {
-                const snippetTexts = snippets.map((s: Snippet) => s.snippet || s.text);
-                const ins = await getInsights(snippetTexts); // Call the separate /insights endpoint
-                
-                setInsightsPack({
+        // --- Listen for selection end → fetch selected text ---
+        adobeDCView.registerCallback(
+          window.AdobeDC.View.Enum.CallbackType.EVENT_LISTENER,
+          async (event: any) => {
+            if (event.type === window.AdobeDC.View.Enum.FilePreviewEvents.PREVIEW_SELECTION_END) {
+              try {
+                const result = await apis.getSelectedContent();
+                const text = (result?.data || "").trim();
+                if (!text) return;
+
+                setSelectedText(text);
+                setLoadingSnippets(true);
+
+                // --- STEP 1: Get Snippets ---
+                const rec = await getRecommendations(text, MAX_SNIPPETS, onlineModeRef.current);
+                let snippets: Snippet[] = rec?.recommendations ?? [];
+                snippets = snippets.map((s: Snippet) => ({
+                  ...s,
+                  doc_name: s.document,
+                  doc_id: s.document,
+                }));
+                setSnippets(snippets);
+
+                // --- STEP 2: If online, fetch insights from snippet texts ---
+                if (onlineModeRef.current && snippets.length > 0) {
+                  const snippetTexts = snippets.map((s) => s.snippet || s.text);
+                  const ins = await getInsights(snippetTexts);
+
+                  setInsightsPack({
                     themes: ins?.parsed?.themes || [],
                     insights: ins?.parsed?.insights || [],
                     didYouKnow: ins?.parsed?.did_you_know || "",
                     contradiction: ins?.parsed?.contradictions || "",
                     connections: ins?.parsed?.connections || [],
                     examples: ins?.parsed?.examples || [],
+                  });
+                } else {
+                  // Offline mode → clear insights
+                  setInsightsPack({
+                    themes: [],
+                    insights: [],
+                    didYouKnow: "",
+                    contradiction: "",
+                    connections: [],
+                    examples: [],
+                  });
+                }
+              } catch (e) {
+                console.error("Error processing text selection:", e);
+                setSnippets([]);
+                setInsightsPack({
+                  themes: [],
+                  insights: [],
+                  didYouKnow: "",
+                  contradiction: "",
+                  connections: [],
+                  examples: [],
                 });
-              } else {
-                // If offline, ensure the insights panel is cleared.
-                setInsightsPack({ themes: [], insights: [], didYouKnow: "", contradiction: "", connections: [], examples: [] });
+              } finally {
+                setLoadingSnippets(false);
               }
-
-            } catch (e) {
-              console.error("Error processing text selection:", e);
-              // Clear panels on error to ensure no stale data is shown
-              setSnippets([]);
-              setInsightsPack({ themes: [], insights: [], didYouKnow: "", contradiction: "", connections: [], examples: [] });
-            } finally {
-              setLoadingSnippets(false);
             }
+          },
+          {
+            enableFilePreviewEvents: true,
+            listenOn: [window.AdobeDC.View.Enum.FilePreviewEvents.PREVIEW_SELECTION_END],
           }
-        },
-        { enableFilePreviewEvents: true, listenOn: [window.AdobeDC.View.Enum.FilePreviewEvents.PREVIEW_SELECTION_END] }
-      );
+        );
+      })
+      .catch((error: any) => console.error("Fatal error initializing Adobe Viewer:", error));
 
-      if (navigationTarget && navigationTarget.doc_id === currentDoc.id) {
-        apis.gotoLocation(navigationTarget.page_number || 1, 0, 0);
-        clearNavigationTarget();
-      }
-    })
-    .catch((error: any) => console.error("Fatal error initializing Adobe Viewer:", error));
-
+    // --- Cleanup ---
     return () => {
-      window.adobeViewerAPIs = null;
+      console.log("--- Viewer cleanup triggered ---");
+      window.adobeViewerAPIs = undefined;
       if (containerRef.current) containerRef.current.innerHTML = "";
     };
-  }, [currentDoc, resetRightPanel, setSelectedText, setSnippets, setLoadingSnippets, setInsightsPack, navigationTarget, clearNavigationTarget]);
+  }, [
+    currentDoc,
+    resetRightPanel,
+    setSnippets,
+    setLoadingSnippets,
+    setInsightsPack,
+    setSelectedText,
+  ]);
 
+  // --- Listen for navigation target ---
   useEffect(() => {
+    console.log("--- JUMP PROCESS LISTENER ---");
+    console.log("Current navigationTarget:", navigationTarget);
+    console.log("Is adobeViewerAPIs available?", !!window.adobeViewerAPIs);
+
     if (navigationTarget && window.adobeViewerAPIs && navigationTarget.doc_id === currentDoc?.id) {
-        window.adobeViewerAPIs.gotoLocation(navigationTarget.page_number || 1, 0, 0);
-        clearNavigationTarget();
+      console.log("Jumping to page:", navigationTarget.page_number);
+      window.adobeViewerAPIs
+        .gotoLocation(navigationTarget.page_number || 1, 0, 0)
+        .then(() => console.log("Jump successful!"))
+        .catch((e: any) => console.error("Jump failed with error:", e))
+        .finally(() => clearNavigationTarget());
+    } else if (navigationTarget) {
+      console.log("Jump conditions NOT met.");
+      if (!window.adobeViewerAPIs) console.error("Reason: adobeViewerAPIs not available.");
+      if (navigationTarget.doc_id !== currentDoc?.id) {
+        console.error("Reason: Target doc ID does not match current doc ID.", {
+          target: navigationTarget.doc_id,
+          current: currentDoc?.id,
+        });
+      }
     }
   }, [navigationTarget, currentDoc?.id, clearNavigationTarget]);
 

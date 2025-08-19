@@ -17,8 +17,8 @@ type State = {
   navigationTarget: Snippet | null;
   themes: string[];
   selectedSnippetId: string | null;
-  latestCurrentDocId: string | null; 
-  examples: string[]; // ✅ NEW: added examples to state
+  latestCurrentDocId: string | null;
+  examples: string[];
 };
 
 type Actions = {
@@ -41,6 +41,7 @@ type Actions = {
 export const useAppStore = create<State & Actions>()(
   persist(
     (set, get) => ({
+      // --- State ---
       onlineMode: true,
       docs: [],
       currentDoc: undefined,
@@ -56,8 +57,9 @@ export const useAppStore = create<State & Actions>()(
       themes: [],
       selectedSnippetId: null,
       latestCurrentDocId: null,
-      examples: [], // ✅ initialized empty
-      
+      examples: [],
+
+      // --- Actions ---
       setOnline: (v) => set({ onlineMode: v }),
       setDocs: (d) => set({ docs: d }),
       setCurrentDoc: (d) => set({ currentDoc: d }),
@@ -67,7 +69,6 @@ export const useAppStore = create<State & Actions>()(
       setInsightsPack: (p) => set(p),
       setAudioUrl: (u) => set({ audioUrl: u }),
 
-      // ✅ Reset now clears examples too
       resetRightPanel: () =>
         set({
           themes: [],
@@ -80,15 +81,29 @@ export const useAppStore = create<State & Actions>()(
           audioUrl: undefined,
           selectedSnippetId: null,
         }),
-      
+
+      // --- Jump-to-snippet logic with logging ---
       navigateToSnippet: (targetSnippet) => {
+        console.log("--- JUMP PROCESS STEP 2: STORE ACTION RECEIVED ---");
+        console.log("Target Snippet's doc_id:", targetSnippet.doc_id);
+
         const { docs, currentDoc } = get();
+        console.log("Current document in viewer:", currentDoc?.id);
+
         if (targetSnippet.doc_id !== currentDoc?.id) {
+          console.log("Decision: Need to switch documents.");
+
           const docToSwitchTo = docs.find((d) => d.id === targetSnippet.doc_id);
+
           if (docToSwitchTo) {
+            console.log("SUCCESS: Found matching document in the store:", docToSwitchTo);
             set({ currentDoc: docToSwitchTo, navigationTarget: targetSnippet });
+          } else {
+            console.error("FAILURE: Could not find a document with ID:", targetSnippet.doc_id);
+            console.log("Available document IDs in store are:", docs.map((d) => d.id));
           }
         } else {
+          console.log("Decision: Document is already open. Setting navigation target.");
           set({ navigationTarget: targetSnippet });
         }
       },
@@ -100,11 +115,9 @@ export const useAppStore = create<State & Actions>()(
       removeDocument: (docId) => {
         const { docs, currentDoc, latestCurrentDocId } = get();
         const newDocs = docs.filter((doc) => doc.id !== docId);
-        
-        if (docId === latestCurrentDocId) {
-          set({ latestCurrentDocId: null });
-        }
-        
+
+        if (docId === latestCurrentDocId) set({ latestCurrentDocId: null });
+
         if (currentDoc?.id === docId) {
           set({
             docs: newDocs,
@@ -117,7 +130,7 @@ export const useAppStore = create<State & Actions>()(
     }),
     {
       name: "docuwise-app-storage",
-      partialize: (state) => ({ 
+      partialize: (state) => ({
         onlineMode: state.onlineMode,
         latestCurrentDocId: state.latestCurrentDocId,
       }),
