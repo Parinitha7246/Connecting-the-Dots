@@ -39,7 +39,6 @@ export async function getInsights(
 
 /**
  * Sends a message to the chat endpoint with context.
- * Falls back to insights if chat fails.
  */
 export async function chat(message: string, context: string[]) {
   try {

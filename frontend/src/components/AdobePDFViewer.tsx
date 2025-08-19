@@ -2,8 +2,9 @@
 import { useEffect, useRef } from "react";
 import { ADOBE_CLIENT_ID } from "../config";
 import { useAppStore } from "../store/useAppStore";
-import { getRecommendations } from "../api/insights";
+import { getRecommendations, getInsights } from "../api/insights"; // <-- We need both functions
 import { MAX_SNIPPETS } from "../config";
+import type { Snippet } from "../api/types";
 
 declare global {
   interface Window { 
@@ -41,12 +42,8 @@ export default function AdobePDFViewer() {
       showDownloadPDF: true,
       showPrintPDF: true
     })
-    .then((adobeViewer: any) => {
-      console.log("Adobe Viewer is ready.");
-      return adobeViewer.getAPIs();
-    })
+    .then((adobeViewer: any) => adobeViewer.getAPIs())
     .then((apis: any) => {
-      console.log("Adobe APIs are ready.");
       window.adobeViewerAPIs = apis;
       
       adobeDCView.registerCallback(
@@ -61,33 +58,38 @@ export default function AdobePDFViewer() {
               setSelectedText(text);
               setLoadingSnippets(true);
               
+              // --- STEP 1: Get Snippets ---
               const rec = await getRecommendations(text, MAX_SNIPPETS, onlineModeRef.current);
               
-              let snippets = rec?.offline?.recommendations ?? [];
-              snippets = snippets.map(s => ({ ...s, doc_name: s.document, doc_id: s.document }));
+              let snippets = rec?.recommendations ?? [];
+              snippets = snippets.map((s: Snippet) => ({ ...s, doc_name: s.document, doc_id: s.document }));
               setSnippets(snippets);
 
-              if (onlineModeRef.current && rec.online) {
-                // If rec.online is a string, parse it. Otherwise, assume it's already an object.
-                const onlineInsights = typeof rec.online === 'string' 
-                  ? JSON.parse(rec.online.replace(/```json\n|```/g, '')) 
-                  : rec.online;
+              // --- THIS IS THE FIX ---
+              // STEP 2: If in online mode, use those snippets to get insights.
+              // This block of code was missing and has now been restored.
+              if (onlineModeRef.current && snippets.length > 0) {
+                const snippetTexts = snippets.map((s: Snippet) => s.snippet || s.text);
+                const ins = await getInsights(snippetTexts); // Call the separate /insights endpoint
                 
-                // --- THIS IS THE ONLY CHANGE IN THIS FILE ---
-                // We now look for the 'examples' field and save it to the store.
                 setInsightsPack({
-                    themes: onlineInsights.themes || [],
-                    insights: onlineInsights.insights || [],
-                    didYouKnow: onlineInsights.did_you_know || "",
-                    contradiction: onlineInsights.contradictions || "",
-                    connections: onlineInsights.connections || [],
-                    examples: onlineInsights.examples || [], // <-- ADD THIS LINE
+                    themes: ins?.parsed?.themes || [],
+                    insights: ins?.parsed?.insights || [],
+                    didYouKnow: ins?.parsed?.did_you_know || "",
+                    contradiction: ins?.parsed?.contradictions || "",
+                    connections: ins?.parsed?.connections || [],
+                    examples: ins?.parsed?.examples || [],
                 });
               } else {
+                // If offline, ensure the insights panel is cleared.
                 setInsightsPack({ themes: [], insights: [], didYouKnow: "", contradiction: "", connections: [], examples: [] });
               }
+
             } catch (e) {
               console.error("Error processing text selection:", e);
+              // Clear panels on error to ensure no stale data is shown
+              setSnippets([]);
+              setInsightsPack({ themes: [], insights: [], didYouKnow: "", contradiction: "", connections: [], examples: [] });
             } finally {
               setLoadingSnippets(false);
             }
@@ -101,9 +103,7 @@ export default function AdobePDFViewer() {
         clearNavigationTarget();
       }
     })
-    .catch((error: any) => {
-      console.error("Fatal error initializing Adobe Viewer:", error);
-    });
+    .catch((error: any) => console.error("Fatal error initializing Adobe Viewer:", error));
 
     return () => {
       window.adobeViewerAPIs = null;

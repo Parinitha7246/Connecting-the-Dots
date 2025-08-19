@@ -11,12 +11,8 @@ export default {
         },
         accent: {
           DEFAULT: '#10b981', // Emerald 500
-          // --- THIS IS THE KEY CHANGE ---
-          // We are using a darker, more noticeable green (Emerald-200) for the light background.
-          light: '#a7f3d0', 
-          // --- NEW ADDITION ---
-          // We are adding a dark green for text to ensure good contrast on the new background.
-          dark: '#065f46',   // Emerald-800
+          light: '#a7f3d0',   // Emerald-200 (lighter background)
+          dark: '#065f46',    // Emerald-800 (contrast text)
         },
         surface: {
           DEFAULT: '#ffffff', // Pure white for cards
@@ -26,6 +22,22 @@ export default {
         content: {
           DEFAULT: '#334155', // Slate 700 - Main text
           subtle: '#64748b',  // Slate 500 - Subtitles and muted text
+        },
+
+        // --- NEW RELATION HIGHLIGHT COLORS ---
+        relation: {
+          overlap: {
+            light: '#dbeafe', // blue-100
+            dark: '#3b82f6',  // blue-500
+          },
+          example: {
+            light: '#d1fae5', // green-100
+            dark: '#10b981',  // green-500
+          },
+          contradiction: {
+            light: '#fee2e2', // red-100
+            dark: '#ef4444',  // red-500
+          },
         },
       },
     },
