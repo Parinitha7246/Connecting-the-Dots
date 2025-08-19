@@ -1,4 +1,3 @@
-# backend/app/routes/recommend.py
 from fastapi import APIRouter
 from pydantic import BaseModel
 from app import config
@@ -9,9 +8,13 @@ from app.services.llm_service import LLMService
 
 router = APIRouter()
 
+# --- THIS IS THE FIX ---
+# We add the 'online' field to the Pydantic model so the backend
+# correctly expects it from the frontend.
 class RecommendRequest(BaseModel):
     selected_text: str
     top_k: int = config.TOP_SECTIONS_COUNT
+    online: bool = False # Default to False if the frontend doesn't send it
 
 @router.post("/recommend")
 async def recommend(payload: RecommendRequest):
@@ -22,19 +25,21 @@ async def recommend(payload: RecommendRequest):
     merged = merge_and_rank(same_doc_res, other_doc_res, payload.top_k)
 
     # Add explicit snippets (2–4 sentences extracts from section text)
-    for rec in merged["recommendations"]:
+    for rec in merged.get("recommendations", []):
         rec["snippet"] = excerpt(rec.get("text", ""), max_sentences=3)
 
     response = {
         "source": "offline",
-        "offline": merged  # merged already contains recommendations + time_machine
+        "offline": merged,
+        "online": None,
     }
 
     # --- Online enrichment ---
-    if config.MODE in ("online", "auto") and internet_available():
+    # This logic now correctly uses the 'payload.online' flag sent from the frontend.
+    if payload.online and config.MODE in ("online", "auto") and internet_available():
         try:
             svc = LLMService()
-            offline_snips = [r["snippet"] for r in merged["recommendations"]]
+            offline_snips = [r["snippet"] for r in merged.get("recommendations", [])]
             enriched = svc.enrich_with_context(
                 offline_snips,
                 "AutoPersona",
