@@ -46,7 +46,7 @@ class LLMService:
             raise LLMError("No Gemini credentials found. Set GEMINI_API_KEY or GOOGLE_APPLICATION_CREDENTIALS.")
 
         self._gemini = genai
-        self._gemini_model = self.model or "gemini-1.5-flash"
+        self._gemini_model = self.model or "gemini-2.5-flash"
         print(f"[INFO] Gemini initialized with model: {self._gemini_model}")
 
     def _init_openai(self):
